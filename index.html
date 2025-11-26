@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Grafico Caratteristica I-V Fotovoltaico - Dark Mode</title>
+    <!-- Caricamento di Tailwind CSS per lo styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Stili personalizzati per il canvas e il cursore */
+        #pv-chart {
+            background-color: #1f2937; /* Sfondo scuro per il canvas */
+            border-radius: 0.5rem;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5); /* Ombra più intensa per dark mode */
+            touch-action: none; 
+            border: 1px solid #374151;
+        }
+        /* Stile per gli slider */
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #f59e0b; /* Arancione per Dark Mode */
+            cursor: pointer;
+            box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.5);
+            transition: background 0.15s ease-in-out;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 min-h-screen p-4 sm:p-8 flex items-center justify-center text-gray-100">
+
+    <div class="w-full max-w-4xl bg-gray-800 p-6 sm:p-8 rounded-xl shadow-2xl space-y-6 border border-gray-700">
+        <h1 class="text-3xl font-bold text-center text-teal-400">Curva Caratteristica I-V Fotovoltaico</h1>
+        <p class="text-center text-gray-400">Trascina il punto rosso/verde sulla curva per variare il punto operativo. Modifica i parametri della curva qui sotto.</p>
+
+        <!-- Controlli: Toggle e Output -->
+        <div class="flex flex-col sm:flex-row justify-between items-start gap-4 p-4 bg-gray-700 rounded-lg shadow-lg">
+            <div id="data-output" class="text-lg font-mono text-gray-100 space-y-1 w-full sm:w-auto">
+                <p>Tensione (V): <span id="v-value" class="font-extrabold text-teal-300">0.00</span> V</p>
+                <p>Corrente (I): <span id="i-value" class="font-extrabold text-teal-300">0.00</span> A</p>
+                <!-- Il colore P viene gestito dinamicamente dal JavaScript -->
+                <p>Potenza (P): <span id="p-value" class="font-extrabold text-red-500 text-xl">0.00</span> W</p>
+                <p>Fattore di Riempimento (FF): <span id="ff-value" class="font-extrabold text-amber-300">0.00</span></p>
+            </div>
+            
+            <!-- Gruppo dei Toggle -->
+            <div class="flex flex-col space-y-2 pt-2">
+                <div class="flex items-center space-x-2">
+                    <input type="checkbox" id="toggle-refs" checked class="w-4 h-4 text-orange-400 border-gray-600 rounded focus:ring-orange-500 bg-gray-600">
+                    <label for="toggle-refs" class="text-gray-200 select-none">Mostra Linee Riferimento (V, I)</label>
+                </div>
+                <div class="flex items-center space-x-2">
+                    <input type="checkbox" id="toggle-power-area" checked class="w-4 h-4 text-yellow-400 border-gray-600 rounded focus:ring-yellow-500 bg-gray-600">
+                    <label for="toggle-power-area" class="text-gray-200 select-none">Mostra Area Potenza (P=V×I)</label>
+                </div>
+                <!-- Toggle per l'MPPT -->
+                <div class="flex items-center space-x-2">
+                    <input type="checkbox" id="toggle-mppt" checked class="w-4 h-4 text-lime-400 border-gray-600 rounded focus:ring-lime-500 bg-gray-600">
+                    <label for="toggle-mppt" class="text-gray-200 select-none">Mostra Punto MPP (P<sub>max</sub>)</label>
+                </div>
+            </div>
+        </div>
+
+        <!-- Controlli: Modifica Curva -->
+        <div class="p-4 bg-gray-800 rounded-lg border border-gray-700 shadow-xl space-y-4">
+            <h2 class="text-xl font-semibold text-gray-200">Parametri del Modulo Fotovoltaico</h2>
+            
+            <!-- Slider VOC -->
+            <div class="flex items-center space-x-4">
+                <label for="voc-slider" class="w-24 text-sm font-medium text-gray-400">V<sub>OC</sub> (V)</label>
+                <input type="range" id="voc-slider" min="15" max="30" step="0.5" value="21" class="flex-grow h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer">
+                <span id="voc-display" class="w-12 text-right font-mono text-orange-400">21.0 V</span>
+            </div>
+
+            <!-- Slider ISC -->
+            <div class="flex items-center space-x-4">
+                <label for="isc-slider" class="w-24 text-sm font-medium text-gray-400">I<sub>SC</sub> (A)</label>
+                <input type="range" id="isc-slider" min="3" max="10" step="0.1" value="6" class="flex-grow h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer">
+                <span id="isc-display" class="w-12 text-right font-mono text-orange-400">6.0 A</span>
+            </div>
+            
+            <!-- Slider: Fattore di Forma (Squadratura) -->
+            <div class="flex items-center space-x-4">
+                <label for="shape-factor-slider" class="w-24 text-sm font-medium text-gray-400">Fattore di Forma</label>
+                <input type="range" id="shape-factor-slider" min="3" max="10" step="0.1" value="5.6" class="flex-grow h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer">
+                <span id="shape-factor-display" class="w-12 text-right font-mono text-orange-400">5.6</span>
+            </div>
+        </div>
+
+
+        <!-- Area del Grafico -->
+        <div class="flex justify-center">
+            <canvas id="pv-chart" width="500" height="500" class="w-full max-w-lg"></canvas>
+        </div>
+
+
+
+    </div>
+
+    <script type="module">
+        // Riferimenti agli elementi di controllo
+        const vocSlider = document.getElementById('voc-slider');
+        const iscSlider = document.getElementById('isc-slider');
+        const shapeFactorSlider = document.getElementById('shape-factor-slider'); 
+        
+        const vocDisplay = document.getElementById('voc-display');
+        const iscDisplay = document.getElementById('isc-display');
+        const shapeFactorDisplay = document.getElementById('shape-factor-display'); 
+        const ffDisplay = document.getElementById('ff-value');
+        
+        const toggleRefs = document.getElementById('toggle-refs');
+        const togglePowerArea = document.getElementById('toggle-power-area');
+        const toggleMppt = document.getElementById('toggle-mppt'); 
+
+        // Variabili del Modulo Fotovoltaico (Mutable)
+        let VOC = parseFloat(vocSlider.value);  // Tensione a Circuito Aperto (Open Circuit Voltage) in Volt
+        let ISC = parseFloat(iscSlider.value);   // Corrente di Cortocircuito (Short Circuit Current) in Ampere
+        
+        // Fattore di idealità/forma che controlla la squadratura (il "ginocchio" della curva)
+        let IDEALITY_FACTOR = parseFloat(shapeFactorSlider.value); 
+        const MPP_TOLERANCE_V = 0.5; // Tolleranza in Volt per considerare l'MPP raggiunto
+        
+        // Costanti per il disegno del Canvas
+        const canvas = document.getElementById('pv-chart');
+        const ctx = canvas.getContext('2d');
+        const WIDTH = canvas.width;
+        const HEIGHT = canvas.height;
+        const PADDING = 50; // Padding per gli assi
+
+        // Scale massime per il grafico (Fissate)
+        const MAX_V_SCALE = 30; 
+        const MAX_I_SCALE = 10;  
+
+        // Variabili di stato
+        let isDragging = false;
+        let currentV = 0; // Tensione attuale del punto operativo
+        let currentI = 0; // Corrente attuale del punto operativo
+        const DRAG_TOLERANCE = 25; // Tolleranza di aggancio in pixel
+        
+        // Risultato del calcolo MPP (cache)
+        let cachedMPP = { V_MPP: 0, I_MPP: 0, P_MPP: 0 };
+
+
+        // --- Funzioni di Utility ---
+
+        /**
+         * Funzione che simula la Curva I-V usando un modello semplificato.
+         * Il parametro 'a' (IDEALITY_FACTOR) controlla la squadratura.
+         * @param {number} V - Tensione (Voltage).
+         * @returns {number} Corrente (Current).
+         */
+        function getI(V) {
+            if (V < 0 || V > VOC) return 0;
+
+            const a = IDEALITY_FACTOR;
+            // Termine di saturazione della corrente diodo (I0)
+            const exp_a_minus_1 = Math.exp(a) - 1;
+
+            if (exp_a_minus_1 === 0) return 0; // Evita divisione per zero
+            
+            // I = ISC - I_diodo, dove I_diodo è modellato esponenzialmente
+            const exp_term = Math.exp((V / VOC) * a);
+            const I_curve = ISC - ISC * (exp_term - 1) / exp_a_minus_1;
+            
+            return Math.max(0, I_curve);
+        }
+        
+        /**
+         * TROVA IL VERO PUNTO DI MASSIMA POTENZA (MPP) utilizzando la ricerca numerica.
+         * @returns {{V_MPP: number, I_MPP: number, P_MPP: number}}
+         */
+        function calculateMPP() {
+            let maxP = 0;
+            let V_MPP_calc = 0;
+            let I_MPP_calc = 0;
+
+            // La ricerca avviene tra 0 e VOC. Usiamo un passo piccolo per precisione.
+            const V_STEP = VOC / 500; 
+
+            for (let V = 0; V <= VOC; V += V_STEP) {
+                const I = getI(V);
+                const P = V * I;
+
+                if (P > maxP) {
+                    maxP = P;
+                    V_MPP_calc = V;
+                    I_MPP_calc = I;
+                }
+            }
+            
+            // Memorizza il risultato corretto in cache
+            cachedMPP = {
+                V_MPP: V_MPP_calc,
+                I_MPP: I_MPP_calc,
+                P_MPP: maxP
+            };
+            
+            return cachedMPP;
+        }
+
+
+        /**
+         * Mappa una coordinata V o I dal mondo reale alle coordinate del Canvas.
+         */
+        function mapToCanvas(value, maxValue, canvasDim, isYAxis = false) {
+            const chartAreaSize = canvasDim - 2 * PADDING;
+            if (isYAxis) {
+                // Asse Y: valore 0 è in basso
+                return (chartAreaSize + PADDING) - (value / maxValue * chartAreaSize);
+            } else {
+                // Asse X: valore 0 è a sinistra
+                return PADDING + (value / maxValue * chartAreaSize);
+            }
+        }
+
+        /**
+         * Mappa una coordinata del Canvas al valore V o I del mondo reale.
+         */
+        function mapFromCanvas(canvasCoord, maxValue, canvasDim, isYAxis = false) {
+            const chartAreaSize = canvasDim - 2 * PADDING;
+            if (isYAxis) {
+                const relativeY = (canvasDim - PADDING) - canvasCoord;
+                return (relativeY / chartAreaSize) * maxValue;
+            } else {
+                const relativeX = canvasCoord - PADDING;
+                return (relativeX / chartAreaSize) * maxValue;
+            }
+        }
+
+        // --- Funzioni di Disegno ---
+
+        /**
+         * Disegna gli assi, le etichette e la griglia.
+         */
+        function drawAxes() {
+            ctx.clearRect(0, 0, WIDTH, HEIGHT);
+            // Colori per Dark Mode
+            ctx.fillStyle = '#f3f4f6'; // Testo bianco/grigio chiaro
+            ctx.strokeStyle = '#f3f4f6'; // Assi bianchi/grigi chiari
+            ctx.lineWidth = 2;
+
+            const X_START = PADDING;
+            const X_END = WIDTH - PADDING;
+            const Y_START = HEIGHT - PADDING;
+            const Y_END = PADDING;
+
+            // 1. Disegna l'Asse X (Tensione V)
+            ctx.beginPath();
+            ctx.moveTo(X_START, Y_START);
+            ctx.lineTo(X_END, Y_START);
+            ctx.stroke();
+
+            // 2. Disegna l'Asse Y (Corrente I)
+            ctx.beginPath();
+            ctx.moveTo(X_START, Y_START);
+            ctx.lineTo(X_START, Y_END);
+            ctx.stroke();
+
+            // 3. Etichette e tacche (Ticks)
+            ctx.font = '12px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'top';
+
+            // Tacche Asse X (V)
+            for (let v = 0; v <= MAX_V_SCALE; v += 5) {
+                const x = mapToCanvas(v, MAX_V_SCALE, WIDTH);
+                ctx.beginPath();
+                ctx.moveTo(x, Y_START);
+                ctx.lineTo(x, Y_START + 5);
+                ctx.strokeStyle = '#6b7280'; // Grigio scuro per le tacche secondarie
+                ctx.stroke();
+                ctx.fillStyle = '#d1d5db'; // Grigio chiaro per il testo
+                ctx.fillText(v.toString(), x, Y_START + 8);
+            }
+            // Etichetta Asse X
+            ctx.font = 'bold 14px sans-serif';
+            ctx.fillText('Tensione V [V]', X_END - 30, Y_START + 30);
+
+
+            ctx.textAlign = 'right';
+            ctx.textBaseline = 'middle';
+
+            // Tacche Asse Y (I)
+            for (let i = 0; i <= MAX_I_SCALE; i += 1) {
+                const y = mapToCanvas(i, MAX_I_SCALE, HEIGHT, true);
+                ctx.beginPath();
+                ctx.moveTo(X_START, y);
+                ctx.lineTo(X_START - 5, y);
+                ctx.strokeStyle = '#6b7280';
+                ctx.stroke();
+                ctx.fillStyle = '#d1d5db';
+                ctx.fillText(i.toFixed(0), X_START - 8, y);
+            }
+            // Etichetta Asse Y
+            ctx.save();
+            ctx.translate(X_START - 30, Y_END + 30);
+            ctx.rotate(-Math.PI / 2);
+            ctx.font = 'bold 14px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('Corrente I [A]', 0, 0);
+            ctx.restore();
+            
+            // Punto (0, 0)
+            ctx.textAlign = 'right';
+            ctx.fillText('0', X_START - 8, Y_START + 8);
+        }
+
+        /**
+         * Disegna la curva I-V.
+         */
+        function drawIVCurve() {
+            ctx.beginPath();
+            ctx.strokeStyle = '#4ade80'; // Colore Verde Acqua brillante per Dark Mode
+            ctx.lineWidth = 4;
+            
+            let firstPoint = true;
+            // Calcola il passo in base a VOC per avere una risoluzione costante
+            const step = VOC / 500; 
+
+            // Disegna dal punto di cortocircuito (V=0) al punto di circuito aperto (V=VOC)
+            for (let V = 0; V <= VOC; V += step) {
+                const I = getI(V);
+                const x = mapToCanvas(V, MAX_V_SCALE, WIDTH);
+                const y = mapToCanvas(I, MAX_I_SCALE, HEIGHT, true);
+
+                if (firstPoint) {
+                    ctx.moveTo(x, y);
+                    firstPoint = false;
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            }
+            ctx.stroke();
+        }
+
+        /**
+         * Disegna l'area di Potenza (P = V * I).
+         * @param {number} v_canvas - Coordinata X del punto operativo.
+         * @param {number} i_canvas - Coordinata Y del punto operativo.
+         */
+        function drawPowerArea(v_canvas, i_canvas) {
+            // Disegna solo se il toggle è selezionato
+            if (!togglePowerArea.checked) return; 
+
+            const X_START = PADDING;
+            const Y_START = HEIGHT - PADDING;
+
+            ctx.beginPath();
+            ctx.fillStyle = 'rgba(252, 211, 77, 0.4)'; // Giallo brillante semi-trasparente per Dark Mode
+            // Disegna il rettangolo dall'origine (X_START, Y_START) al punto (v_canvas, i_canvas)
+            ctx.moveTo(X_START, Y_START); 
+            ctx.lineTo(v_canvas, Y_START); 
+            ctx.lineTo(v_canvas, i_canvas); 
+            ctx.lineTo(X_START, i_canvas); 
+            ctx.closePath();
+            ctx.fill();
+        }
+        
+        /**
+         * Disegna il punto di Massima Potenza (MPPT) come una croce verde.
+         * @param {number} V_MPP - Tensione MPP.
+         * @param {number} I_MPP - Corrente MPP.
+         */
+        function drawMPPPoint(V_MPP, I_MPP) {
+            if (!toggleMppt.checked) return;
+
+            const X_MPP = mapToCanvas(V_MPP, MAX_V_SCALE, WIDTH);
+            const Y_MPP = mapToCanvas(I_MPP, MAX_I_SCALE, HEIGHT, true);
+            const size = 8;
+
+            ctx.strokeStyle = '#84cc16'; // Lime/Verde acido per Dark Mode
+            ctx.lineWidth = 3;
+
+            // Disegna la X (MPPT Marker)
+            ctx.beginPath();
+            ctx.moveTo(X_MPP - size, Y_MPP - size);
+            ctx.lineTo(X_MPP + size, Y_MPP + size);
+            ctx.moveTo(X_MPP + size, Y_MPP - size);
+            ctx.lineTo(X_MPP - size, Y_MPP + size);
+            ctx.stroke();
+            
+            // Opzionalmente disegna un cerchio intorno alla X
+            ctx.beginPath();
+            ctx.arc(X_MPP, Y_MPP, size + 2, 0, Math.PI * 2);
+            ctx.strokeStyle = '#84cc16';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+        }
+
+
+        /**
+         * Disegna il punto operativo e le linee di riferimento.
+         * @param {number} v_canvas - Coordinata X del punto operativo.
+         * @param {number} i_canvas - Coordinata Y del punto operativo.
+         * @param {boolean} is_mppt - True se il punto è vicino al MPP.
+         */
+        function drawOperatingPoint(v_canvas, i_canvas, is_mppt) {
+            const X_START = PADDING;
+            const Y_START = HEIGHT - PADDING;
+            
+            const pointColor = is_mppt ? '#10b981' : '#f87171'; // Verde brillante vs Rosso per Dark Mode
+
+            // Disegna le linee di riferimento tratteggiate se l'opzione è attiva
+            if (toggleRefs.checked) {
+                // Colore di riferimento arancione (coordinato con i display)
+                ctx.strokeStyle = '#fb923c'; 
+                ctx.setLineDash([5, 5]); 
+
+                // Linee di Riferimento
+                ctx.beginPath();
+                ctx.moveTo(v_canvas, Y_START);
+                ctx.lineTo(v_canvas, i_canvas);
+                ctx.moveTo(X_START, i_canvas);
+                ctx.lineTo(v_canvas, i_canvas);
+                ctx.stroke();
+
+                ctx.setLineDash([]); 
+            }
+
+
+            // Disegna il punto operativo
+            ctx.beginPath();
+            ctx.fillStyle = pointColor; 
+            ctx.arc(v_canvas, i_canvas, 6, 0, Math.PI * 2); 
+            ctx.fill();
+        }
+        
+        /**
+         * Aggiorna la curva e resetta il punto operativo se necessario.
+         */
+        function updateCurveParameters() {
+            VOC = parseFloat(vocSlider.value);
+            ISC = parseFloat(iscSlider.value);
+            IDEALITY_FACTOR = parseFloat(shapeFactorSlider.value); 
+            
+            vocDisplay.textContent = `${VOC.toFixed(1)} V`;
+            iscDisplay.textContent = `${ISC.toFixed(1)} A`;
+            shapeFactorDisplay.textContent = `${IDEALITY_FACTOR.toFixed(1)}`;
+
+            // Ricalcola il vero MPP per la nuova curva
+            calculateMPP(); 
+
+            // Se il punto operativo corrente è al di fuori dei nuovi limiti,
+            // lo riportiamo vicino al nuovo V_MPP
+            if (currentV > VOC || currentV < 0 || getI(currentV) < 0) {
+                 // Sposta il punto al nuovo V_MPP calcolato
+                 currentV = cachedMPP.V_MPP;
+            }
+
+            updateChart(currentV);
+        }
+
+        /**
+         * Funzione principale per aggiornare il grafico e i dati.
+         * @param {number} V - Tensione per il punto operativo.
+         */
+        function updateChart(V) {
+            
+            const mpp = cachedMPP;
+            
+            // Limita V tra 0 e VOC per rimanere sulla curva
+            currentV = Math.min(VOC, Math.max(0, V));
+            currentI = getI(currentV);
+            
+            // Calcola se siamo vicini all'MPP (confrontando la V)
+            const isNearMPP = Math.abs(currentV - mpp.V_MPP) < MPP_TOLERANCE_V;
+            
+            // Converti V e I in coordinate Canvas
+            const v_canvas = mapToCanvas(currentV, MAX_V_SCALE, WIDTH);
+            const i_canvas = mapToCanvas(currentI, MAX_I_SCALE, HEIGHT, true);
+
+            // Disegno
+            drawAxes();
+            drawIVCurve();
+            drawPowerArea(v_canvas, i_canvas); 
+            drawMPPPoint(mpp.V_MPP, mpp.I_MPP); // Disegna il punto MPP (X verde)
+            drawOperatingPoint(v_canvas, i_canvas, isNearMPP); // Disegna il punto operativo (pallino rosso/verde)
+
+            // Aggiorna i valori nell'interfaccia utente
+            const P = currentV * currentI;
+            
+            // Calcolo del Fattore di Riempimento (FF)
+            const maxPowerTheoretical = VOC * ISC;
+            const FF = maxPowerTheoretical > 0 ? (mpp.P_MPP / maxPowerTheoretical) : 0;
+            
+            document.getElementById('v-value').textContent = currentV.toFixed(2);
+            document.getElementById('i-value').textContent = currentI.toFixed(2);
+            document.getElementById('p-value').textContent = P.toFixed(2);
+            ffDisplay.textContent = FF.toFixed(3); // Mostra il FF
+
+            // LOGICA COLORE POTENZA: Verde se vicino all'MPP, altrimenti Rosso
+            const pValueElement = document.getElementById('p-value');
+            // Rimuove tutte le classi di colore non necessarie per Dark Mode
+            pValueElement.classList.remove('text-red-600', 'text-green-700', 'text-red-500', 'text-lime-400');
+
+            if (isNearMPP) {
+                // Colore brillante per l'MPP in Dark Mode
+                pValueElement.classList.add('text-lime-400');
+            } else {
+                // Colore di avviso (Rosso)
+                pValueElement.classList.add('text-red-500');
+            }
+        }
+
+        // --- Gestione Interattività (Trascinamento) ---
+
+        /**
+         * Inizia il trascinamento al click/touch sul canvas.
+         */
+        function handleDragStart(event) {
+            const rect = canvas.getBoundingClientRect();
+            // Gestione per mouse e touch
+            const clientX = event.clientX || event.touches?.[0]?.clientX;
+            const clientY = event.clientY || event.touches?.[0]?.clientY;
+            
+            if (typeof clientX === 'undefined') return;
+
+            // Calcola la coordinata X/Y normalizzata al canvas
+            const canvasX = (clientX - rect.left) * (WIDTH / rect.width);
+            const canvasY = (clientY - rect.top) * (HEIGHT / rect.height);
+            
+            // Mappa x in V
+            const V_check = mapFromCanvas(canvasX, MAX_V_SCALE, WIDTH, false);
+            const I_expected = getI(V_check);
+            const y_expected = mapToCanvas(I_expected, MAX_I_SCALE, HEIGHT, true);
+
+            // Controlla se il click è vicino alla curva (Tolleranza aumentata)
+            if (Math.abs(canvasY - y_expected) < DRAG_TOLERANCE && V_check >= 0 && V_check <= VOC) {
+                isDragging = true;
+                updateChart(V_check);
+                event.preventDefault(); 
+            }
+        }
+
+        /**
+         * Gestisce il movimento del trascinamento.
+         */
+        function handleDragMove(event) {
+            if (!isDragging) return;
+
+            const rect = canvas.getBoundingClientRect();
+            const clientX = event.clientX || event.touches?.[0]?.clientX;
+            
+            if (typeof clientX === 'undefined') return;
+
+            // Calcola la coordinata X normalizzata al canvas 
+            const canvasX = (clientX - rect.left) * (WIDTH / rect.width);
+            
+            // Mappa la coordinata X in Tensione V
+            let newV = mapFromCanvas(canvasX, MAX_V_SCALE, WIDTH, false);
+            
+            // Limita la Tensione V all'intervallo [0, VOC]
+            newV = Math.min(VOC, Math.max(0, newV));
+
+            updateChart(newV);
+            event.preventDefault(); 
+        }
+
+        /**
+         * Termina il trascinamento.
+         */
+        function handleDragEnd() {
+            isDragging = false;
+        }
+
+        // --- Listener degli Eventi ---
+        canvas.addEventListener('mousedown', handleDragStart);
+        document.addEventListener('mousemove', handleDragMove);
+        document.addEventListener('mouseup', handleDragEnd);
+
+        // Aggiungi supporto per touch events (mobile)
+        canvas.addEventListener('touchstart', handleDragStart);
+        document.addEventListener('touchmove', handleDragMove);
+        document.addEventListener('touchend', handleDragEnd);
+
+        // Listener per i toggle (ora ricaricano il grafico forzatamente)
+        toggleRefs.addEventListener('change', () => updateChart(currentV));
+        togglePowerArea.addEventListener('change', () => updateChart(currentV)); 
+        toggleMppt.addEventListener('change', () => updateChart(currentV)); 
+
+        // Listener per gli slider della curva (ricalcola MPP ad ogni modifica)
+        vocSlider.addEventListener('input', updateCurveParameters);
+        iscSlider.addEventListener('input', updateCurveParameters);
+        shapeFactorSlider.addEventListener('input', updateCurveParameters); 
+
+        // Inizializza il grafico (Calcola MPP iniziale e disegna)
+        updateCurveParameters();
+    </script>
+</body>
+</html>
